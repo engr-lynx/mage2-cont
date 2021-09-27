@@ -8,6 +8,7 @@ RUN MAGENTO_ROOT_AUTH_FILE="${COMPOSER_ROOT_HOME}/auth.json" \
   && cp ./auth.json.sample ${MAGENTO_ROOT_AUTH_FILE} \
   && sed -i "s/<public-key>/${MP_USERNAME}/" ${MAGENTO_ROOT_AUTH_FILE} \
   && sed -i "s/<private-key>/${MP_PASSWORD}/" ${MAGENTO_ROOT_AUTH_FILE} \
+  && cp ${MAGENTO_ROOT_AUTH_FILE} ${COMPOSER_PROJ_HOME} \
   && RETRIES=3; SLEEP=3; i=0; \
   while [ ${i} -lt ${RETRIES} ]; do \
     composer install; \
@@ -17,8 +18,7 @@ RUN MAGENTO_ROOT_AUTH_FILE="${COMPOSER_ROOT_HOME}/auth.json" \
     fi; \
     i=$((i+1)); \
     sleep ${SLEEP}; \
-  done && return ${RES} \
-  && cp ${MAGENTO_ROOT_AUTH_FILE} ${COMPOSER_PROJ_HOME}
+  done && return ${RES}
 
 # Deploy Magento2 sample data
 ARG DEPLOY_SAMPLE
