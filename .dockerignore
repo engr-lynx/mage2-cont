@@ -1,0 +1,28 @@
+# generated files
+/var/*
+!/var/.htaccess
+/vendor/*
+!/vendor/.htaccess
+/generated/*
+!/generated/.htaccess
+
+# docker
+.dockerignore
+Dockerfile
+
+# git
+.gitignore
+.git
+
+# IDEs
+.editorconfig
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# system files
+.DS_Store
+Thumbs.db
