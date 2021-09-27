@@ -4,20 +4,37 @@ FROM public.ecr.aws/z0z6r0u2/magento2-php-apache:latest
 ARG MP_USERNAME
 ARG MP_PASSWORD
 COPY ./ ./
-RUN MAGENTO_AUTH_FILE=${COMPOSER_HOME}/auth.json \
-  && cp ./auth.json.sample ${MAGENTO_AUTH_FILE} \
-  && sed -i "s/<public-key>/${MP_USERNAME}/" ${MAGENTO_AUTH_FILE} \
-  && sed -i "s/<private-key>/${MP_PASSWORD}/" ${MAGENTO_AUTH_FILE} \
+RUN MAGENTO_ROOT_AUTH_FILE="${COMPOSER_ROOT_HOME}/auth.json" \
+  && cp ./auth.json.sample ${MAGENTO_ROOT_AUTH_FILE} \
+  && sed -i "s/<public-key>/${MP_USERNAME}/" ${MAGENTO_ROOT_AUTH_FILE} \
+  && sed -i "s/<private-key>/${MP_PASSWORD}/" ${MAGENTO_ROOT_AUTH_FILE} \
   && RETRIES=3; SLEEP=3; i=0; \
   while [ ${i} -lt ${RETRIES} ]; do \
-    composer update; \
+    composer install; \
     RES=$?; \
     if [ ${RES} -eq 0 ]; then \
       break; \
     fi; \
     i=$((i+1)); \
     sleep ${SLEEP}; \
-  done && return ${RES}
+  done && return ${RES} \
+  && cp ${MAGENTO_ROOT_AUTH_FILE} ${COMPOSER_PROJ_HOME}
+
+# Deploy Magento2 sample data
+ARG DEPLOY_SAMPLE
+RUN RES=0; \
+  if [ "${DEPLOY_SAMPLE}" == "true" ]; then \
+    RETRIES=3; SLEEP=3; i=0; \
+    while [ ${i} -lt ${RETRIES} ]; do \
+      bin/magento sampledata:deploy; \
+      RES=$?; \
+      if [ ${RES} -eq 0 ]; then \
+        break; \
+      fi; \
+      i=$((i+1)); \
+      sleep ${SLEEP}; \
+    done; \
+  fi && return ${RES}
 
 # Install Magento2
 ARG BASE_URL
