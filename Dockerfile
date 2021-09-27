@@ -23,7 +23,7 @@ RUN MAGENTO_ROOT_AUTH_FILE="${COMPOSER_ROOT_HOME}/auth.json" \
 # Deploy Magento2 sample data
 ARG DEPLOY_SAMPLE
 RUN RES=0; \
-  if [ "${DEPLOY_SAMPLE}" == "true" ]; then \
+  if [ "${DEPLOY_SAMPLE}" = "true" ]; then \
     RETRIES=3; SLEEP=3; i=0; \
     while [ ${i} -lt ${RETRIES} ]; do \
       bin/magento sampledata:deploy; \
