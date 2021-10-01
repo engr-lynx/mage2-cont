@@ -1,4 +1,55 @@
-FROM public.ecr.aws/z0z6r0u2/magento2-php-apache:latest
+# using public.ecr.aws/z0z6r0u2/php7.4-apache:latest instead of php:7.4-apache because Docker Hub sometimes throttles requests
+FROM public.ecr.aws/z0z6r0u2/php7.4-apache:latest
+# FROM php:7.4-apache
+
+# Install Linux library dependencies
+RUN apt-get update \
+  && apt-get install -y \
+    zip \
+    unzip \
+    libjpeg-dev \
+    libfreetype6-dev \
+    zlib1g-dev \
+    libpng-dev \
+    libicu-dev \
+    libxml2-dev \
+    libxslt-dev \
+    libzip-dev
+
+# Install PHP module dependencies
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+  && docker-php-ext-install \
+    gd \
+    intl \
+    pdo_mysql \
+    soap \
+    xsl \
+    zip \
+    sockets \
+    bcmath
+
+# Install Composer
+RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
+  && php -r "if (hash_file('sha384', 'composer-setup.php') === '756890a4488ce9024fc62c56153228907f1545c228516cbf63f885e036d37e9a59d27d63f46af1d4d07ee0f76181c7d3') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('composer-setup.php'); } echo PHP_EOL;" \
+  && php composer-setup.php \
+  && php -r "unlink('composer-setup.php');" \
+  && mv composer.phar /usr/local/bin/composer
+
+# Configure Apache
+RUN a2enmod rewrite
+COPY ./apache.conf.sample ${APACHE_CONFDIR}/sites-available/000-default.conf
+
+# Configure PHP
+RUN mv "${PHP_INI_DIR}/php.ini-production" "${PHP_INI_DIR}/php.ini" \
+  && sed -i "s/memory_limit = /memory_limit = -1 ;/" "${PHP_INI_DIR}/php.ini"
+
+# Magento2 environment
+ARG MAGENTO2_HOME="/var/www/magento2"
+ARG COMPOSER_ROOT_HOME="/root/.composer"
+ARG COMPOSER_PROJ_HOME="${MAGENTO2_HOME}/var/composer_home"
+WORKDIR ${MAGENTO2_HOME}
+RUN mkdir -p ${COMPOSER_ROOT_HOME} \
+  && mkdir -p ${COMPOSER_PROJ_HOME}
 
 # Copy Magento2 project and install dependencies
 ARG MP_USERNAME
@@ -39,8 +90,8 @@ RUN RES=0; \
 # Install Magento2
 ARG BASE_URL
 ARG ADMIN_URL_PATH
-ARG ADMIN_FIRSTNAME
-ARG ADMIN_LASTNAME
+ARG ADMIN_FIRST_NAME
+ARG ADMIN_LAST_NAME
 ARG ADMIN_EMAIL
 ARG ADMIN_USERNAME
 ARG ADMIN_PASSWORD
@@ -67,8 +118,8 @@ RUN bin/magento setup:install \
     --elasticsearch-username="${ES_USERNAME}" \
     --elasticsearch-password="${ES_PASSWORD}" \
     --backend-frontname="${ADMIN_URL_PATH}" \
-    --admin-firstname="${ADMIN_FIRSTNAME}" \
-    --admin-lastname="${ADMIN_LASTNAME}" \
+    --admin-firstname="${ADMIN_FIRST_NAME}" \
+    --admin-lastname="${ADMIN_LAST_NAME}" \
     --admin-email="${ADMIN_EMAIL}" \
     --admin-user="${ADMIN_USERNAME}" \
     --admin-password="${ADMIN_PASSWORD}" \
