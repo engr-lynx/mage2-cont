@@ -2,6 +2,13 @@
 FROM public.ecr.aws/z0z6r0u2/php7.4-apache:latest
 # FROM php:7.4-apache
 
+# Magento2 work directory
+WORKDIR /var/www/magento2
+
+# Configure PHP
+RUN mv "${PHP_INI_DIR}/php.ini-production" "${PHP_INI_DIR}/php.ini" \
+  && sed -i "s/memory_limit = /memory_limit = -1 ;/" "${PHP_INI_DIR}/php.ini"
+
 # Install Linux library dependencies
 RUN apt-get update \
   && apt-get install -y \
@@ -29,63 +36,64 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     bcmath
 
 # Install Composer
-RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
-  && php -r "if (hash_file('sha384', 'composer-setup.php') === '756890a4488ce9024fc62c56153228907f1545c228516cbf63f885e036d37e9a59d27d63f46af1d4d07ee0f76181c7d3') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('composer-setup.php'); } echo PHP_EOL;" \
+RUN i=0; RES=false; \
+  while [ ${i} -lt 3 ]; do \
+    php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"; \
+    ACTUAL_CHECKSUM="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"; \
+    EXPECTED_CHECKSUM="$(php -r 'copy("https://composer.github.io/installer.sig", "php://stdout");')"; \
+    if [ "${EXPECTED_CHECKSUM}" = "${ACTUAL_CHECKSUM}" ]; then \
+      RES=true; \
+      break; \
+    fi; \
+    sleep 2; \
+    i=$((i+1)); \
+  done && ${RES} \
   && php composer-setup.php \
-  && php -r "unlink('composer-setup.php');" \
+  && rm composer-setup.php \
   && mv composer.phar /usr/local/bin/composer
+
+# Configure Composer
+ARG MP_USERNAME
+ARG MP_PASSWORD
+ARG COMPOSER_ROOT_AUTH_FILE="/root/.composer/auth.json"
+COPY ./auth.json.sample ${COMPOSER_ROOT_AUTH_FILE}
+RUN sed -i "s/<public-key>/${MP_USERNAME}/" ${COMPOSER_ROOT_AUTH_FILE} \
+  && sed -i "s/<private-key>/${MP_PASSWORD}/" ${COMPOSER_ROOT_AUTH_FILE} \
+  && COMPOSER_PROJ_HOME="./var/composer_home" \
+  && mkdir -p ${COMPOSER_PROJ_HOME} \
+  && cp ${COMPOSER_ROOT_AUTH_FILE} ${COMPOSER_PROJ_HOME}
 
 # Configure Apache
 RUN a2enmod rewrite
 COPY ./apache.conf.sample ${APACHE_CONFDIR}/sites-available/000-default.conf
 
-# Configure PHP
-RUN mv "${PHP_INI_DIR}/php.ini-production" "${PHP_INI_DIR}/php.ini" \
-  && sed -i "s/memory_limit = /memory_limit = -1 ;/" "${PHP_INI_DIR}/php.ini"
-
-# Magento2 environment
-ARG MAGENTO2_HOME="/var/www/magento2"
-ARG COMPOSER_ROOT_HOME="/root/.composer"
-ARG COMPOSER_PROJ_HOME="${MAGENTO2_HOME}/var/composer_home"
-WORKDIR ${MAGENTO2_HOME}
-RUN mkdir -p ${COMPOSER_ROOT_HOME} \
-  && mkdir -p ${COMPOSER_PROJ_HOME}
-
 # Copy Magento2 project and install dependencies
-ARG MP_USERNAME
-ARG MP_PASSWORD
 COPY ./ ./
-RUN MAGENTO_ROOT_AUTH_FILE="${COMPOSER_ROOT_HOME}/auth.json" \
-  && cp ./auth.json.sample ${MAGENTO_ROOT_AUTH_FILE} \
-  && sed -i "s/<public-key>/${MP_USERNAME}/" ${MAGENTO_ROOT_AUTH_FILE} \
-  && sed -i "s/<private-key>/${MP_PASSWORD}/" ${MAGENTO_ROOT_AUTH_FILE} \
-  && cp ${MAGENTO_ROOT_AUTH_FILE} ${COMPOSER_PROJ_HOME} \
-  && RETRIES=3; SLEEP=3; i=0; \
-  while [ ${i} -lt ${RETRIES} ]; do \
+RUN i=0; RES=false; \
+  while [ ${i} -lt 3 ]; do \
     composer install; \
-    RES=$?; \
-    if [ ${RES} -eq 0 ]; then \
+    if [ $? -eq 0 ]; then \
+      RES=true; \
       break; \
     fi; \
+    sleep 2; \
     i=$((i+1)); \
-    sleep ${SLEEP}; \
-  done && return ${RES}
+  done && ${RES}
 
 # Deploy Magento2 sample data
 ARG DEPLOY_SAMPLE
-RUN RES=0; \
-  if [ "${DEPLOY_SAMPLE}" = "true" ]; then \
-    RETRIES=3; SLEEP=3; i=0; \
-    while [ ${i} -lt ${RETRIES} ]; do \
+RUN if [ "${DEPLOY_SAMPLE}" = "true" ]; then \
+    i=0; RES=false; \
+    while [ ${i} -lt 3 ]; do \
       bin/magento sampledata:deploy; \
-      RES=$?; \
-      if [ ${RES} -eq 0 ]; then \
+      if [ $? -eq 0 ]; then \
+        RES=true; \
         break; \
       fi; \
+      sleep 2; \
       i=$((i+1)); \
-      sleep ${SLEEP}; \
-    done; \
-  fi && return ${RES}
+    done && ${RES}; \
+  fi
 
 # Install Magento2
 ARG BASE_URL
